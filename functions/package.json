@@ -24,6 +24,7 @@
     "resend": "^4.0.1"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.17",
     "chai": "^6.2.1",
     "firebase-functions-test": "^3.0.0",
     "mocha": "^11.7.5"
