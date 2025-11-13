@@ -40,6 +40,22 @@ const FIREBASE_CONFIGS = {
     storageBucket: "maintenance-zone4.firebasestorage.app",
     messagingSenderId: "401587012447",
     appId: "1:401587012447:web:f119d416d0212c38a92cea"
+  },
+  zone5: {
+    apiKey: "AIzaSyA73EbNdEMRj4zh51NCQK51_VMaLMm9aX0",
+    authDomain: "maintenance-zone5.firebaseapp.com",
+    projectId: "maintenance-zone5",
+    storageBucket: "maintenance-zone5.firebasestorage.app",
+    messagingSenderId: "225294916768",
+    appId: "1:225294916768:web:3ebb0bbc95b6ce1ea53dc5"
+  },
+  zone6: {
+    apiKey: "AIzaSyB5Mph1-EibTLDLBJnOOM6ngJ46zaK8pEA",
+    authDomain: "maintenance-zone6.firebaseapp.com",
+    projectId: "maintenance-zone6",
+    storageBucket: "maintenance-zone6.firebasestorage.app",
+    messagingSenderId: "760193868266",
+    appId: "1:760193868266:web:8cb0ed9c0aacdcfb69d293"
   }
 };
 
