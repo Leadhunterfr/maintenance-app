@@ -59,3 +59,4 @@ coverage
 !package-lock.json
 !firebase.json
 !firestore.indexes.json
+!vercel.json
