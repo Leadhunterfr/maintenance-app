@@ -1,7 +1,7 @@
 // Proxy Vercel pour communiquer avec le backend RPI
 // Contourne les restrictions Private Network Access du navigateur
 
-module.exports = async (req, res) => {
+module.exports = (req, res) => {
   // Gestion CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,11 +14,9 @@ module.exports = async (req, res) => {
   }
 
   // Test simple d'abord
-  return res.status(200).json({
-    message: 'Proxy test',
+  res.status(200).json({
+    message: 'Proxy test OK',
     method: req.method,
-    url: req.url,
-    hasBody: req.body !== undefined,
-    headers: req.headers
+    url: req.url
   });
 };
