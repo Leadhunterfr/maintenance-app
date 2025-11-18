@@ -1,10 +1,6 @@
 // Proxy Vercel pour communiquer avec le backend RPI
 // Contourne les restrictions Private Network Access du navigateur
 
-const https = require('https');
-
-const RPI_API_URL = 'https://rpi011.taild92b43.ts.net/api';
-
 module.exports = async (req, res) => {
   // Gestion CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -17,103 +13,12 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
-  try {
-    // Extraire le chemin de l'API depuis l'URL
-    const path = req.url.replace(/^\/api/, '');
-    const targetUrl = `${RPI_API_URL}${path}`;
-
-    console.log(`[Proxy] ${req.method} ${targetUrl}`);
-
-    // Lire le body pour POST/PUT
-    let bodyData = '';
-    if (req.method === 'POST' || req.method === 'PUT') {
-      // Lire le body du stream
-      bodyData = await new Promise((resolve, reject) => {
-        let data = '';
-        req.on('data', chunk => {
-          data += chunk.toString();
-        });
-        req.on('end', () => {
-          resolve(data);
-        });
-        req.on('error', reject);
-      });
-      console.log('[Proxy] Request body:', bodyData);
-    }
-
-    // Faire la requête HTTPS vers le RPI
-    const result = await new Promise((resolve, reject) => {
-      const options = {
-        hostname: 'rpi011.taild92b43.ts.net',
-        port: 443,
-        path: path,
-        method: req.method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        rejectUnauthorized: false
-      };
-
-      // Ajouter Content-Length si on a un body
-      if (bodyData) {
-        options.headers['Content-Length'] = Buffer.byteLength(bodyData);
-      }
-
-      // Copier l'en-tête Authorization s'il existe
-      if (req.headers.authorization) {
-        options.headers['Authorization'] = req.headers.authorization;
-      }
-
-      const request = https.request(options, (response) => {
-        let data = '';
-
-        response.on('data', (chunk) => {
-          data += chunk;
-        });
-
-        response.on('end', () => {
-          console.log('[Proxy] Response status:', response.statusCode);
-          console.log('[Proxy] Response data:', data);
-
-          try {
-            const jsonData = JSON.parse(data);
-            resolve({ status: response.statusCode, data: jsonData });
-          } catch (e) {
-            console.log('[Proxy] Non-JSON response:', data);
-            resolve({
-              status: response.statusCode,
-              data: { error: 'Réponse non-JSON du serveur', details: data }
-            });
-          }
-        });
-      });
-
-      request.on('error', (error) => {
-        console.error('[Proxy] Request error:', error);
-        reject(error);
-      });
-
-      request.setTimeout(8000, () => {
-        request.destroy();
-        reject(new Error('Request timeout'));
-      });
-
-      // Envoyer le body pour POST/PUT
-      if (bodyData) {
-        request.write(bodyData);
-      }
-
-      request.end();
-    });
-
-    return res.status(result.status).json(result.data);
-  } catch (error) {
-    console.error('[Proxy] Erreur complète:', error);
-    console.error('[Proxy] Stack:', error.stack);
-    return res.status(500).json({
-      error: 'Erreur de communication avec le serveur',
-      details: error.message,
-      stack: error.stack
-    });
-  }
+  // Test simple d'abord
+  return res.status(200).json({
+    message: 'Proxy test',
+    method: req.method,
+    url: req.url,
+    hasBody: req.body !== undefined,
+    headers: req.headers
+  });
 };
