@@ -10,8 +10,29 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors());
+// Middleware CORS configuré pour accepter les requêtes depuis Vercel et Private Network Access
+app.use(cors({
+  origin: ['https://maintenance-app-alpha.vercel.app', 'http://localhost:5173', 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// Gestion des preflight requests pour Private Network Access
+app.use((req, res, next) => {
+  // En-têtes pour Private Network Access (CORS-RFC1918)
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    return res.status(204).end();
+  }
+  next();
+});
+
 app.use(express.json());
 
 // Route de santé
