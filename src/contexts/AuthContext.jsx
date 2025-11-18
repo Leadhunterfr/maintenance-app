@@ -1,12 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import {
-  signInWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-  createUserWithEmailAndPassword,
-} from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { getAuthForZone, getFirestoreForZone } from '../utils/firebase';
+import apiClient from '../utils/api';
 import { ROLES } from '../utils/constants';
 
 const AuthContext = createContext({});
@@ -22,63 +15,33 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   /**
-   * Récupère les données utilisateur depuis Firestore
-   */
-  async function fetchUserData(uid) {
-    try {
-      // Vérifie d'abord si c'est un super admin
-      const superAdminDoc = await getDoc(doc(getFirestoreForZone('zone1'), 'superAdmins', uid));
-
-      if (superAdminDoc.exists()) {
-        const data = superAdminDoc.data();
-        setUserRole(ROLES.SUPER_ADMIN);
-        setUserEtablissement(null);
-        return data;
-      }
-
-      // Sinon, cherche dans les utilisateurs (peut être dans n'importe quelle zone)
-      // Pour simplifier, on cherche dans zone1 en premier
-      // TODO: Optimiser en stockant la zone dans le custom claim
-      const userDoc = await getDoc(doc(getFirestoreForZone('zone1'), 'users', uid));
-
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        setUserRole(data.role || ROLES.ADMIN_ETABLISSEMENT);
-
-        if (data.etablissementId) {
-          // Récupère les données de l'établissement
-          const etablissementDoc = await getDoc(
-            doc(getFirestoreForZone(data.zone || 'zone1'), 'etablissements', data.etablissementId)
-          );
-
-          if (etablissementDoc.exists()) {
-            setUserEtablissement({
-              id: etablissementDoc.id,
-              ...etablissementDoc.data(),
-            });
-          }
-        }
-
-        return data;
-      }
-
-      return null;
-    } catch (error) {
-      console.error('Erreur lors de la récupération des données utilisateur:', error);
-      return null;
-    }
-  }
-
-  /**
    * Connexion avec email et mot de passe
-   * IMPORTANT: Auth toujours en zone1
    */
   async function signIn(email, password) {
     try {
-      const auth = getAuthForZone('zone1');
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      await fetchUserData(userCredential.user.uid);
-      return userCredential;
+      const response = await apiClient.login(email, password);
+
+      setCurrentUser({
+        id: response.user.id,
+        email: response.user.email,
+        name: response.user.name,
+      });
+
+      setUserRole(response.user.role);
+
+      if (response.user.etablissement_id) {
+        // Récupère les données de l'établissement si besoin
+        try {
+          const etablissement = await apiClient.getEtablissement(response.user.etablissement_id);
+          setUserEtablissement(etablissement);
+        } catch (error) {
+          console.error('Erreur lors de la récupération de l\'établissement:', error);
+        }
+      } else {
+        setUserEtablissement(null);
+      }
+
+      return response;
     } catch (error) {
       console.error('Erreur de connexion:', error);
       throw error;
@@ -90,8 +53,7 @@ export function AuthProvider({ children }) {
    */
   async function signOut() {
     try {
-      const auth = getAuthForZone('zone1');
-      await firebaseSignOut(auth);
+      await apiClient.logout();
       setCurrentUser(null);
       setUserRole(null);
       setUserEtablissement(null);
@@ -103,33 +65,12 @@ export function AuthProvider({ children }) {
 
   /**
    * Création d'un compte admin établissement (réservé au super admin)
-   * IMPORTANT: Auth toujours en zone1, données dans la zone appropriée
+   * Note: Cette fonction n'est plus nécessaire avec le nouveau backend
+   * La création d'utilisateur se fait maintenant via l'API établissements
    */
   async function createAdminEtablissement(email, password, etablissementData) {
-    try {
-      // Crée le compte Firebase Auth en ZONE1
-      const auth = getAuthForZone('zone1');
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = userCredential.user.uid;
-
-      // Détermine la zone pour les DONNÉES selon le code postal
-      const dataZone = etablissementData.zone || 'zone1';
-
-      // Document utilisateur en ZONE1
-      const dbAuth = getFirestoreForZone('zone1');
-      await setDoc(doc(dbAuth, 'users', uid), {
-        email,
-        role: ROLES.ADMIN_ETABLISSEMENT,
-        etablissementId: etablissementData.id,
-        dataZone,
-        createdAt: new Date(),
-      });
-
-      return userCredential;
-    } catch (error) {
-      console.error('Erreur lors de la création du compte:', error);
-      throw error;
-    }
+    console.warn('createAdminEtablissement: Cette fonction est obsolète avec le nouveau backend');
+    throw new Error('Utilisez l\'API établissements pour créer un établissement et son admin');
   }
 
   /**
@@ -143,42 +84,28 @@ export function AuthProvider({ children }) {
    * Vérifie si l'utilisateur est super admin
    */
   function isSuperAdmin() {
-    return userRole === ROLES.SUPER_ADMIN;
+    return userRole === ROLES.SUPER_ADMIN || userRole === 'super_admin';
   }
 
   /**
    * Vérifie si l'utilisateur est admin établissement
    */
   function isAdminEtablissement() {
-    return userRole === ROLES.ADMIN_ETABLISSEMENT;
+    return userRole === ROLES.ADMIN_ETABLISSEMENT || userRole === 'admin_etablissement';
   }
 
-  // Observer les changements d'authentification
-  // IMPORTANT: Auth toujours en zone1
+  // Vérifie le token au chargement
   useEffect(() => {
-    const auth = getAuthForZone('zone1');
+    const token = apiClient.getToken();
 
-    if (!auth) {
+    if (token) {
+      // Le token existe, on peut essayer de récupérer les données utilisateur
+      // Pour l'instant on marque juste comme chargé
+      // TODO: Ajouter un endpoint /api/auth/me pour récupérer les infos utilisateur
       setLoading(false);
-      return;
+    } else {
+      setLoading(false);
     }
-
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setLoading(true);
-
-      if (user) {
-        setCurrentUser(user);
-        await fetchUserData(user.uid);
-      } else {
-        setCurrentUser(null);
-        setUserRole(null);
-        setUserEtablissement(null);
-      }
-
-      setLoading(false);
-    });
-
-    return unsubscribe;
   }, []);
 
   const value = {

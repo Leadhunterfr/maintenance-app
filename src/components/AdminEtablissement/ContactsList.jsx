@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import apiClient from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
-import { getFirestoreForZone } from '../../utils/firebase';
 import { SUCCESS_MESSAGES } from '../../utils/constants';
 import { isValidEmail } from '../../utils/helpers';
 import Navbar from '../Shared/Navbar';
@@ -32,18 +31,7 @@ export default function ContactsList() {
 
   async function fetchContacts() {
     try {
-      const db = getFirestoreForZone(userEtablissement.zone || 'zone1');
-      const contactsSnap = await getDocs(
-        collection(db, `etablissements/${userEtablissement.id}/contacts`)
-      );
-
-      const contactsData = [];
-      contactsSnap.forEach((doc) => {
-        contactsData.push({
-          id: doc.id,
-          ...doc.data(),
-        });
-      });
+      const contactsData = await apiClient.getContacts(userEtablissement.id);
 
       // Trie par nom
       contactsData.sort((a, b) => a.nom.localeCompare(b.nom));
@@ -51,6 +39,7 @@ export default function ContactsList() {
       setContacts(contactsData);
     } catch (error) {
       console.error('Erreur lors de la récupération des contacts:', error);
+      alert('Erreur lors du chargement des contacts');
     } finally {
       setLoading(false);
     }
@@ -98,28 +87,22 @@ export default function ContactsList() {
     setSubmitting(true);
 
     try {
-      const db = getFirestoreForZone(userEtablissement.zone || 'zone1');
-      const etablissementId = userEtablissement.id;
-
       const contactData = {
+        etablissement_id: userEtablissement.id,
         nom: formData.nom,
+        prenom: '',
+        fonction: '',
         email: formData.email,
         telephone: formData.telephone,
-        updatedAt: new Date(),
+        mobile: '',
+        notes: '',
       };
 
       if (editingContact) {
-        await updateDoc(
-          doc(db, `etablissements/${etablissementId}/contacts`, editingContact.id),
-          contactData
-        );
+        await apiClient.updateContact(editingContact.id, contactData);
         alert(SUCCESS_MESSAGES.CONTACT_UPDATED);
       } else {
-        contactData.createdAt = new Date();
-        await addDoc(
-          collection(db, `etablissements/${etablissementId}/contacts`),
-          contactData
-        );
+        await apiClient.createContact(contactData);
         alert(SUCCESS_MESSAGES.CONTACT_CREATED);
       }
 
@@ -139,10 +122,7 @@ export default function ContactsList() {
     }
 
     try {
-      const db = getFirestoreForZone(userEtablissement.zone || 'zone1');
-      await deleteDoc(
-        doc(db, `etablissements/${userEtablissement.id}/contacts`, contact.id)
-      );
+      await apiClient.deleteContact(contact.id);
       alert(SUCCESS_MESSAGES.CONTACT_DELETED);
       fetchContacts();
     } catch (error) {

@@ -1,13 +1,10 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { getFirestoreForZone, getZoneFromCodePostal, getAuthForZone } from '../../utils/firebase';
-import { ZONES_LABELS, SUCCESS_MESSAGES } from '../../utils/constants';
+import apiClient from '../../utils/api';
+import { SUCCESS_MESSAGES } from '../../utils/constants';
 import Navbar from '../Shared/Navbar';
 import Card from '../Shared/Card';
 import Button from '../Shared/Button';
 import Input from '../Shared/Input';
-import Select from '../Shared/Select';
 import Loader from '../Shared/Loader';
 
 export default function Etablissements() {
@@ -31,30 +28,11 @@ export default function Etablissements() {
 
   async function fetchEtablissements() {
     try {
-      const allEtabs = [];
-
-      // Récupère les établissements de toutes les zones
-      for (const zone of ['zone1', 'zone2', 'zone3', 'zone4']) {
-        try {
-          const db = getFirestoreForZone(zone);
-          const snapshot = await getDocs(collection(db, 'etablissements'));
-
-          snapshot.forEach((doc) => {
-            allEtabs.push({
-              id: doc.id,
-              zone,
-              ...doc.data(),
-            });
-          });
-        } catch (error) {
-          // Ignore les erreurs de permissions pour les zones où l'admin n'existe pas encore
-          console.log(`Zone ${zone}: pas encore d'établissements ou permissions manquantes`);
-        }
-      }
-
-      setEtablissements(allEtabs);
+      const data = await apiClient.getEtablissements();
+      setEtablissements(data);
     } catch (error) {
       console.error('Erreur lors de la récupération des établissements:', error);
+      alert('Erreur lors du chargement des établissements');
     } finally {
       setLoading(false);
     }
@@ -67,10 +45,6 @@ export default function Etablissements() {
     if (!formData.adresse) newErrors.adresse = 'L\'adresse est requise';
     if (!formData.codePostal) newErrors.codePostal = 'Le code postal est requis';
     if (!formData.ville) newErrors.ville = 'La ville est requise';
-    if (!formData.email) newErrors.email = 'L\'email est requis';
-    if (!formData.password || formData.password.length < 6) {
-      newErrors.password = 'Le mot de passe doit contenir au moins 6 caractères';
-    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -84,53 +58,17 @@ export default function Etablissements() {
     setSubmitting(true);
 
     try {
-      // Détermine la zone pour les DONNÉES selon le code postal
-      const dataZone = getZoneFromCodePostal(formData.codePostal);
-      console.log('📍 Zone pour les données:', dataZone);
-
-      // IMPORTANT: Auth toujours en zone1, données dans la zone appropriée
-      const authZone1 = getAuthForZone('zone1');
-      const dbData = getFirestoreForZone(dataZone);
-      const dbAuth = getFirestoreForZone('zone1'); // Pour le document users
-
-      console.log('🔐 Création du compte admin en ZONE1:', formData.email);
-
-      // Crée le compte admin en ZONE1
-      const userCredential = await createUserWithEmailAndPassword(
-        authZone1,
-        formData.email,
-        formData.password
-      );
-
-      console.log('✅ Compte créé en zone1, UID:', userCredential.user.uid);
-
-      // Crée l'établissement dans la zone appropriée
-      const etablissementRef = await addDoc(collection(dbData, 'etablissements'), {
+      await apiClient.createEtablissement({
         nom: formData.nom,
         adresse: formData.adresse,
-        codePostal: formData.codePostal,
+        code_postal: formData.codePostal,
         ville: formData.ville,
-        adminEmail: formData.email,
-        adminUid: userCredential.user.uid,
-        zone: dataZone,
-        modulesActifs: ['maintenance'], // Module maintenance actif par défaut
-        createdAt: new Date(),
+        pays: 'France',
+        telephone: '',
+        email: '',
+        notes: '',
+        modules: ['maintenance'],
       });
-
-      console.log(`✅ Établissement créé en ${dataZone}, ID:`, etablissementRef.id);
-
-      // Crée le document utilisateur en ZONE1 (avec référence à la zone des données)
-      // IMPORTANT: Utilise setDoc avec l'UID comme ID du document
-      await setDoc(doc(dbAuth, 'users', userCredential.user.uid), {
-        uid: userCredential.user.uid,
-        email: formData.email,
-        role: 'admin_etablissement',
-        etablissementId: etablissementRef.id,
-        dataZone: dataZone, // Zone où se trouvent les données de l'établissement
-        createdAt: new Date(),
-      });
-
-      console.log('✅ Document utilisateur créé en zone1 avec UID:', userCredential.user.uid);
 
       alert(SUCCESS_MESSAGES.ETABLISSEMENT_CREATED);
       setShowModal(false);
@@ -145,8 +83,6 @@ export default function Etablissements() {
       fetchEtablissements();
     } catch (error) {
       console.error('❌ Erreur lors de la création:', error);
-      console.error('Code erreur:', error.code);
-      console.error('Message:', error.message);
       alert('Erreur : ' + error.message);
     } finally {
       setSubmitting(false);
@@ -159,8 +95,7 @@ export default function Etablissements() {
     }
 
     try {
-      const db = getFirestoreForZone(etablissement.zone);
-      await deleteDoc(doc(db, 'etablissements', etablissement.id));
+      await apiClient.deleteEtablissement(etablissement.id);
       alert('Établissement supprimé');
       fetchEtablissements();
     } catch (error) {
@@ -203,17 +138,16 @@ export default function Etablissements() {
                         {etab.adresse}
                       </p>
                       <p className="text-sm text-gray-600 mb-2">
-                        {etab.codePostal} {etab.ville}
+                        {etab.code_postal} {etab.ville}
                       </p>
-                      <span className="inline-block px-2 py-1 text-xs font-medium rounded bg-primary-100 text-primary-800">
-                        {ZONES_LABELS[etab.zone]}
-                      </span>
+                      {etab.email && (
+                        <p className="text-xs text-gray-500">
+                          {etab.email}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="mt-4 pt-4 border-t border-gray-200">
-                    <p className="text-xs text-gray-500 mb-2">
-                      Admin : {etab.adminEmail}
-                    </p>
                     <Button
                       variant="danger"
                       size="sm"
@@ -275,30 +209,6 @@ export default function Etablissements() {
                       required
                     />
                   </div>
-
-                  <hr className="my-4" />
-
-                  <p className="text-sm text-gray-600 mb-4">
-                    Compte administrateur de l'établissement
-                  </p>
-
-                  <Input
-                    label="Email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    error={errors.email}
-                    required
-                  />
-
-                  <Input
-                    label="Mot de passe"
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    error={errors.password}
-                    required
-                  />
                 </div>
 
                 <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3">

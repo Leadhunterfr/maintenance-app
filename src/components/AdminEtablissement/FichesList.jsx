@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import apiClient from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
-import { getFirestoreForZone } from '../../utils/firebase';
 import { PERIODICITES, SUCCESS_MESSAGES } from '../../utils/constants';
 import { formatDate, calculateNextDate, getStatutBadgeClass, getStatutLabel } from '../../utils/helpers';
 import Navbar from '../Shared/Navbar';
@@ -41,47 +40,41 @@ export default function FichesList() {
 
   async function fetchData() {
     try {
-      const db = getFirestoreForZone(userEtablissement.zone || 'zone1');
-      const etablissementId = userEtablissement.id;
-
       // Récupère les fiches
-      const fichesSnap = await getDocs(
-        collection(db, `etablissements/${etablissementId}/fiches`)
-      );
+      const fichesData = await apiClient.getFiches(userEtablissement.id);
 
-      const fichesData = [];
-      fichesSnap.forEach((doc) => {
-        fichesData.push({
-          id: doc.id,
-          ...doc.data(),
-        });
-      });
+      // Convertir les noms de champs snake_case vers camelCase
+      const fichesFormatted = fichesData.map(fiche => ({
+        id: fiche.id,
+        nomTache: fiche.nom_tache,
+        urlPdf: fiche.url_pdf,
+        frequenceMois: fiche.frequence_mois,
+        prochainEnvoi: fiche.prochain_envoi,
+        dernierEnvoi: fiche.dernier_envoi,
+        responsableNom: fiche.responsable_nom,
+        responsableEmail: fiche.responsable_email,
+        responsableAdjointNom: fiche.responsable_adjoint_nom,
+        responsableAdjointEmail: fiche.responsable_adjoint_email,
+        contactIds: fiche.contact_ids || [],
+        commentaire: fiche.commentaire,
+        statut: fiche.statut,
+      }));
 
       // Trie par date
-      fichesData.sort((a, b) => {
-        const dateA = a.prochainEnvoi?.toDate ? a.prochainEnvoi.toDate() : new Date(a.prochainEnvoi);
-        const dateB = b.prochainEnvoi?.toDate ? b.prochainEnvoi.toDate() : new Date(b.prochainEnvoi);
+      fichesFormatted.sort((a, b) => {
+        const dateA = new Date(a.prochainEnvoi || 0);
+        const dateB = new Date(b.prochainEnvoi || 0);
         return dateA - dateB;
       });
 
-      setFiches(fichesData);
+      setFiches(fichesFormatted);
 
       // Récupère les contacts
-      const contactsSnap = await getDocs(
-        collection(db, `etablissements/${etablissementId}/contacts`)
-      );
-
-      const contactsData = [];
-      contactsSnap.forEach((doc) => {
-        contactsData.push({
-          id: doc.id,
-          ...doc.data(),
-        });
-      });
-
+      const contactsData = await apiClient.getContacts(userEtablissement.id);
       setContacts(contactsData);
     } catch (error) {
       console.error('Erreur lors de la récupération des données:', error);
+      alert('Erreur lors du chargement des données');
     } finally {
       setLoading(false);
     }
@@ -94,7 +87,7 @@ export default function FichesList() {
         nomTache: fiche.nomTache || '',
         urlPdf: fiche.urlPdf || '',
         frequenceMois: String(fiche.frequenceMois || '6'),
-        prochainEnvoi: fiche.prochainEnvoi ? formatDate(fiche.prochainEnvoi.toDate ? fiche.prochainEnvoi.toDate() : fiche.prochainEnvoi).split('/').reverse().join('-') : '',
+        prochainEnvoi: fiche.prochainEnvoi ? new Date(fiche.prochainEnvoi).toISOString().split('T')[0] : '',
         responsableNom: fiche.responsableNom || '',
         responsableEmail: fiche.responsableEmail || '',
         responsableAdjointNom: fiche.responsableAdjointNom || '',
@@ -141,37 +134,28 @@ export default function FichesList() {
     setSubmitting(true);
 
     try {
-      const db = getFirestoreForZone(userEtablissement.zone || 'zone1');
-      const etablissementId = userEtablissement.id;
-
+      // Convertir les noms de champs camelCase vers snake_case pour l'API
       const ficheData = {
-        nomTache: formData.nomTache,
-        urlPdf: formData.urlPdf,
-        frequenceMois: parseInt(formData.frequenceMois),
-        prochainEnvoi: new Date(formData.prochainEnvoi),
-        dernierEnvoi: null,
-        responsableNom: formData.responsableNom,
-        responsableEmail: formData.responsableEmail,
-        responsableAdjointNom: formData.responsableAdjointNom,
-        responsableAdjointEmail: formData.responsableAdjointEmail,
-        contactIds: formData.contactIds,
+        etablissement_id: userEtablissement.id,
+        nom_tache: formData.nomTache,
+        url_pdf: formData.urlPdf,
+        frequence_mois: parseInt(formData.frequenceMois),
+        prochain_envoi: new Date(formData.prochainEnvoi).toISOString(),
+        dernier_envoi: null,
+        responsable_nom: formData.responsableNom,
+        responsable_email: formData.responsableEmail,
+        responsable_adjoint_nom: formData.responsableAdjointNom,
+        responsable_adjoint_email: formData.responsableAdjointEmail,
+        contact_ids: formData.contactIds,
         commentaire: formData.commentaire,
         statut: 'en_attente',
-        updatedAt: new Date(),
       };
 
       if (editingFiche) {
-        await updateDoc(
-          doc(db, `etablissements/${etablissementId}/fiches`, editingFiche.id),
-          ficheData
-        );
+        await apiClient.updateFiche(editingFiche.id, ficheData);
         alert(SUCCESS_MESSAGES.FICHE_UPDATED);
       } else {
-        ficheData.createdAt = new Date();
-        await addDoc(
-          collection(db, `etablissements/${etablissementId}/fiches`),
-          ficheData
-        );
+        await apiClient.createFiche(ficheData);
         alert(SUCCESS_MESSAGES.FICHE_CREATED);
       }
 
@@ -191,10 +175,7 @@ export default function FichesList() {
     }
 
     try {
-      const db = getFirestoreForZone(userEtablissement.zone || 'zone1');
-      await deleteDoc(
-        doc(db, `etablissements/${userEtablissement.id}/fiches`, fiche.id)
-      );
+      await apiClient.deleteFiche(fiche.id);
       alert(SUCCESS_MESSAGES.FICHE_DELETED);
       fetchData();
     } catch (error) {
@@ -255,12 +236,12 @@ export default function FichesList() {
                           </p>
                           <p className="mb-1">
                             <span className="font-medium">Prochain envoi :</span>{' '}
-                            {fiche.prochainEnvoi && formatDate(fiche.prochainEnvoi.toDate ? fiche.prochainEnvoi.toDate() : fiche.prochainEnvoi)}
+                            {fiche.prochainEnvoi && formatDate(new Date(fiche.prochainEnvoi))}
                           </p>
                           {fiche.dernierEnvoi && (
                             <p>
                               <span className="font-medium">Dernier envoi :</span>{' '}
-                              {formatDate(fiche.dernierEnvoi.toDate ? fiche.dernierEnvoi.toDate() : fiche.dernierEnvoi)}
+                              {formatDate(new Date(fiche.dernierEnvoi))}
                             </p>
                           )}
                         </div>
