@@ -17,7 +17,7 @@ export default function Navbar() {
   }
 
   const isSuperAdmin = userRole === ROLES.SUPER_ADMIN;
-  const isAdminEtablissement = userRole === ROLES.ADMIN_ETABLISSEMENT;
+  const isAdminEtablissement = userRole === ROLES.ADMIN_ETABLISSEMENT || userRole === ROLES.RESPONSABLE || userRole === 'responsable' || userRole === 'admin_etablissement';
 
   // Récupère les modules actifs de l'établissement
   const modulesActifs = userEtablissement?.modulesActifs || [];
