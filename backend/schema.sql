@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS fiches_maintenance (
   responsable_email VARCHAR(255),
   responsable_adjoint_nom VARCHAR(255),
   responsable_adjoint_email VARCHAR(255),
+  executant_nom VARCHAR(255),
+  executant_email VARCHAR(255),
   contact_ids JSONB DEFAULT '[]'::jsonb,
   commentaire TEXT,
   statut VARCHAR(50) DEFAULT 'en_attente',
@@ -67,6 +69,7 @@ CREATE TABLE IF NOT EXISTS contacts (
   telephone VARCHAR(50),
   mobile VARCHAR(50),
   notes TEXT,
+  role VARCHAR(50) DEFAULT 'user',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

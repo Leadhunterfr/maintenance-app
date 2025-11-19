@@ -19,6 +19,7 @@ export default function ContactsList() {
     nom: '',
     email: '',
     telephone: '',
+    role: 'user',
   });
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -52,6 +53,7 @@ export default function ContactsList() {
         nom: contact.nom || '',
         email: contact.email || '',
         telephone: contact.telephone || '',
+        role: contact.role || 'user',
       });
     } else {
       setEditingContact(null);
@@ -59,6 +61,7 @@ export default function ContactsList() {
         nom: '',
         email: '',
         telephone: '',
+        role: 'user',
       });
     }
     setShowModal(true);
@@ -96,6 +99,7 @@ export default function ContactsList() {
         telephone: formData.telephone,
         mobile: '',
         notes: '',
+        role: formData.role,
       };
 
       if (editingContact) {
@@ -158,9 +162,18 @@ export default function ContactsList() {
                 <Card key={contact.id}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                        {contact.nom}
-                      </h3>
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          {contact.nom}
+                        </h3>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                          contact.role === 'responsable' || contact.role === 'admin_etablissement'
+                            ? 'bg-purple-100 text-purple-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {contact.role === 'responsable' || contact.role === 'admin_etablissement' ? 'Responsable' : 'Utilisateur'}
+                        </span>
+                      </div>
                       <p className="text-sm text-gray-600 mb-1">
                         📧 {contact.email}
                       </p>
@@ -232,6 +245,23 @@ export default function ContactsList() {
                     onChange={(e) => setFormData({ ...formData, telephone: e.target.value })}
                     error={errors.telephone}
                   />
+
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Rôle
+                    </label>
+                    <select
+                      value={formData.role}
+                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                      className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+                    >
+                      <option value="user">Utilisateur</option>
+                      <option value="responsable">Responsable</option>
+                    </select>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Les responsables peuvent se connecter et gérer les fiches
+                    </p>
+                  </div>
                 </div>
 
                 <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse gap-3">

@@ -22,10 +22,9 @@ export default function FichesList() {
     urlPdf: '',
     frequenceMois: '6',
     prochainEnvoi: '',
-    responsableNom: '',
-    responsableEmail: '',
-    responsableAdjointNom: '',
-    responsableAdjointEmail: '',
+    responsableId: '',
+    responsableAdjointId: '',
+    executantId: '',
     contactIds: [],
     commentaire: '',
   });
