@@ -294,9 +294,23 @@ app.get('/api/etablissements/:etablissementId/fiches', authenticateToken, requir
   try {
     const { etablissementId } = req.params;
     const result = await pool.query(
-      `SELECT * FROM fiches_maintenance
-       WHERE etablissement_id = $1
-       ORDER BY prochain_envoi ASC`,
+      `SELECT fm.*,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', c.id,
+                    'nom', c.nom,
+                    'email', c.email
+                  ) ORDER BY c.nom
+                ) FILTER (WHERE c.id IS NOT NULL),
+                '[]'
+              ) as executants
+       FROM fiches_maintenance fm
+       LEFT JOIN fiche_executants fe ON fm.id = fe.fiche_id
+       LEFT JOIN contacts c ON fe.contact_id = c.id
+       WHERE fm.etablissement_id = $1
+       GROUP BY fm.id
+       ORDER BY fm.prochain_envoi ASC`,
       [etablissementId]
     );
 
@@ -312,7 +326,22 @@ app.get('/api/fiches/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      'SELECT * FROM fiches_maintenance WHERE id = $1',
+      `SELECT fm.*,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', c.id,
+                    'nom', c.nom,
+                    'email', c.email
+                  ) ORDER BY c.nom
+                ) FILTER (WHERE c.id IS NOT NULL),
+                '[]'
+              ) as executants
+       FROM fiches_maintenance fm
+       LEFT JOIN fiche_executants fe ON fm.id = fe.fiche_id
+       LEFT JOIN contacts c ON fe.contact_id = c.id
+       WHERE fm.id = $1
+       GROUP BY fm.id`,
       [id]
     );
 
@@ -329,6 +358,8 @@ app.get('/api/fiches/:id', authenticateToken, async (req, res) => {
 
 // Créer une fiche
 app.post('/api/fiches', authenticateToken, requireEtablissementAccess, async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const {
       etablissement_id,
@@ -341,6 +372,7 @@ app.post('/api/fiches', authenticateToken, requireEtablissementAccess, async (re
       responsable_adjoint_nom,
       responsable_adjoint_email,
       contact_ids,
+      executant_ids,
       commentaire
     } = req.body;
 
@@ -348,7 +380,10 @@ app.post('/api/fiches', authenticateToken, requireEtablissementAccess, async (re
       return res.status(400).json({ error: 'Nom de tâche et établissement requis' });
     }
 
-    const result = await pool.query(
+    await client.query('BEGIN');
+
+    // Créer la fiche
+    const ficheResult = await client.query(
       `INSERT INTO fiches_maintenance
        (etablissement_id, nom_tache, url_pdf, frequence_mois, prochain_envoi,
         responsable_nom, responsable_email, responsable_adjoint_nom, responsable_adjoint_email,
@@ -360,15 +395,55 @@ app.post('/api/fiches', authenticateToken, requireEtablissementAccess, async (re
        JSON.stringify(contact_ids || []), commentaire, 'en_attente']
     );
 
-    res.status(201).json(result.rows[0]);
+    const fiche = ficheResult.rows[0];
+
+    // Ajouter les exécutants
+    if (executant_ids && executant_ids.length > 0) {
+      for (const contactId of executant_ids) {
+        await client.query(
+          'INSERT INTO fiche_executants (fiche_id, contact_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [fiche.id, contactId]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+
+    // Récupérer la fiche complète avec les exécutants
+    const completeFiche = await pool.query(
+      `SELECT fm.*,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', c.id,
+                    'nom', c.nom,
+                    'email', c.email
+                  ) ORDER BY c.nom
+                ) FILTER (WHERE c.id IS NOT NULL),
+                '[]'
+              ) as executants
+       FROM fiches_maintenance fm
+       LEFT JOIN fiche_executants fe ON fm.id = fe.fiche_id
+       LEFT JOIN contacts c ON fe.contact_id = c.id
+       WHERE fm.id = $1
+       GROUP BY fm.id`,
+      [fiche.id]
+    );
+
+    res.status(201).json(completeFiche.rows[0]);
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Erreur création fiche:', error);
     res.status(500).json({ error: 'Erreur serveur' });
+  } finally {
+    client.release();
   }
 });
 
 // Modifier une fiche
 app.put('/api/fiches/:id', authenticateToken, requireResourceAccess('fiche'), async (req, res) => {
+  const client = await pool.connect();
+
   try {
     const { id } = req.params;
     const {
@@ -382,11 +457,15 @@ app.put('/api/fiches/:id', authenticateToken, requireResourceAccess('fiche'), as
       responsable_adjoint_nom,
       responsable_adjoint_email,
       contact_ids,
+      executant_ids,
       commentaire,
       statut
     } = req.body;
 
-    const result = await pool.query(
+    await client.query('BEGIN');
+
+    // Mettre à jour la fiche
+    const result = await client.query(
       `UPDATE fiches_maintenance
        SET nom_tache = $1, url_pdf = $2, frequence_mois = $3, prochain_envoi = $4,
            dernier_envoi = $5, responsable_nom = $6, responsable_email = $7,
@@ -400,13 +479,56 @@ app.put('/api/fiches/:id', authenticateToken, requireResourceAccess('fiche'), as
     );
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Fiche non trouvée' });
     }
 
-    res.json(result.rows[0]);
+    // Mettre à jour les exécutants
+    if (executant_ids !== undefined) {
+      // Supprimer les anciennes relations
+      await client.query('DELETE FROM fiche_executants WHERE fiche_id = $1', [id]);
+
+      // Ajouter les nouvelles relations
+      if (executant_ids.length > 0) {
+        for (const contactId of executant_ids) {
+          await client.query(
+            'INSERT INTO fiche_executants (fiche_id, contact_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [id, contactId]
+          );
+        }
+      }
+    }
+
+    await client.query('COMMIT');
+
+    // Récupérer la fiche complète avec les exécutants
+    const completeFiche = await pool.query(
+      `SELECT fm.*,
+              COALESCE(
+                json_agg(
+                  json_build_object(
+                    'id', c.id,
+                    'nom', c.nom,
+                    'email', c.email
+                  ) ORDER BY c.nom
+                ) FILTER (WHERE c.id IS NOT NULL),
+                '[]'
+              ) as executants
+       FROM fiches_maintenance fm
+       LEFT JOIN fiche_executants fe ON fm.id = fe.fiche_id
+       LEFT JOIN contacts c ON fe.contact_id = c.id
+       WHERE fm.id = $1
+       GROUP BY fm.id`,
+      [id]
+    );
+
+    res.json(completeFiche.rows[0]);
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Erreur modification fiche:', error);
     res.status(500).json({ error: 'Erreur serveur' });
+  } finally {
+    client.release();
   }
 });
 

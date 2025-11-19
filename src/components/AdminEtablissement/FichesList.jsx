@@ -24,7 +24,7 @@ export default function FichesList() {
     prochainEnvoi: '',
     responsableId: '',
     responsableAdjointId: '',
-    executantId: '',
+    executantIds: [],
     contactIds: [],
     commentaire: '',
   });
@@ -54,8 +54,7 @@ export default function FichesList() {
         responsableEmail: fiche.responsable_email,
         responsableAdjointNom: fiche.responsable_adjoint_nom,
         responsableAdjointEmail: fiche.responsable_adjoint_email,
-        executantNom: fiche.executant_nom,
-        executantEmail: fiche.executant_email,
+        executants: Array.isArray(fiche.executants) ? fiche.executants : [],
         contactIds: fiche.contact_ids || [],
         commentaire: fiche.commentaire,
         statut: fiche.statut,
@@ -87,7 +86,7 @@ export default function FichesList() {
       // Trouver les IDs des contacts correspondants
       const responsable = contacts.find(c => c.email === fiche.responsableEmail);
       const adjoint = contacts.find(c => c.email === fiche.responsableAdjointEmail);
-      const executant = contacts.find(c => c.email === fiche.executantEmail);
+      const executantIds = fiche.executants?.map(ex => ex.id) || [];
 
       setFormData({
         nomTache: fiche.nomTache || '',
@@ -96,7 +95,7 @@ export default function FichesList() {
         prochainEnvoi: fiche.prochainEnvoi ? new Date(fiche.prochainEnvoi).toISOString().split('T')[0] : '',
         responsableId: responsable?.id || '',
         responsableAdjointId: adjoint?.id || '',
-        executantId: executant?.id || '',
+        executantIds: executantIds,
         contactIds: fiche.contactIds || [],
         commentaire: fiche.commentaire || '',
       });
@@ -109,7 +108,7 @@ export default function FichesList() {
         prochainEnvoi: '',
         responsableId: '',
         responsableAdjointId: '',
-        executantId: '',
+        executantIds: [],
         contactIds: [],
         commentaire: '',
       });
@@ -141,7 +140,6 @@ export default function FichesList() {
       // Récupérer les infos des contacts sélectionnés
       const responsable = contacts.find(c => c.id === parseInt(formData.responsableId));
       const adjoint = contacts.find(c => c.id === parseInt(formData.responsableAdjointId));
-      const executant = contacts.find(c => c.id === parseInt(formData.executantId));
 
       // Convertir les noms de champs camelCase vers snake_case pour l'API
       const ficheData = {
@@ -155,8 +153,7 @@ export default function FichesList() {
         responsable_email: responsable?.email || '',
         responsable_adjoint_nom: adjoint?.nom || '',
         responsable_adjoint_email: adjoint?.email || '',
-        executant_nom: executant?.nom || '',
-        executant_email: executant?.email || '',
+        executant_ids: formData.executantIds,
         contact_ids: formData.contactIds,
         commentaire: formData.commentaire,
         statut: 'en_attente',
@@ -268,9 +265,10 @@ export default function FichesList() {
                               <span className="font-medium">Responsable adjoint :</span> {fiche.responsableAdjointNom}
                             </p>
                           )}
-                          {fiche.executantNom && (
+                          {fiche.executants && fiche.executants.length > 0 && (
                             <p>
-                              <span className="font-medium">Exécutant :</span> {fiche.executantNom}
+                              <span className="font-medium">Exécutant{fiche.executants.length > 1 ? 's' : ''} :</span>{' '}
+                              {fiche.executants.map(ex => ex.nom).join(', ')}
                             </p>
                           )}
                         </div>
@@ -413,20 +411,45 @@ export default function FichesList() {
 
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Exécutant de la tâche
+                      Exécutants de la tâche (plusieurs possibles)
                     </label>
-                    <select
-                      value={formData.executantId}
-                      onChange={(e) => setFormData({ ...formData, executantId: e.target.value })}
-                      className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
-                    >
-                      <option value="">-- Sélectionner un contact --</option>
-                      {contacts.map((contact) => (
-                        <option key={contact.id} value={contact.id}>
-                          {contact.nom} ({contact.email})
-                        </option>
-                      ))}
-                    </select>
+                    <div className="mt-2 max-h-48 overflow-y-auto border border-gray-300 rounded-md p-2">
+                      {contacts.length === 0 ? (
+                        <p className="text-sm text-gray-500 py-2">Aucun contact disponible</p>
+                      ) : (
+                        contacts.map((contact) => (
+                          <label
+                            key={contact.id}
+                            className="flex items-center py-2 px-2 hover:bg-gray-50 rounded cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={formData.executantIds.includes(contact.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setFormData({
+                                    ...formData,
+                                    executantIds: [...formData.executantIds, contact.id]
+                                  });
+                                } else {
+                                  setFormData({
+                                    ...formData,
+                                    executantIds: formData.executantIds.filter(id => id !== contact.id)
+                                  });
+                                }
+                              }}
+                              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                            />
+                            <span className="ml-2 text-sm text-gray-900">
+                              {contact.nom} <span className="text-gray-500">({contact.email})</span>
+                            </span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Sélectionnez un ou plusieurs contacts qui exécuteront cette tâche
+                    </p>
                   </div>
 
                   <hr className="my-4" />
