@@ -1,5 +1,6 @@
 // Proxy Vercel pour communiquer avec le backend RPI
 // Contourne les restrictions Private Network Access du navigateur
+// Force rebuild 2025-11-19
 
 const https = require('https');
 
