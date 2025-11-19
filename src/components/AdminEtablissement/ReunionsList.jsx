@@ -274,10 +274,12 @@ export default function ReunionsList() {
                   />
 
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label htmlFor="reunion-description" className="block text-sm font-medium text-gray-700 mb-2">
                       Description
                     </label>
                     <textarea
+                      id="reunion-description"
+                      name="description"
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                       rows="3"
@@ -339,8 +341,10 @@ export default function ReunionsList() {
                   />
 
                   <div className="mb-4">
-                    <label className="flex items-center">
+                    <label htmlFor="reunion-actif" className="flex items-center">
                       <input
+                        id="reunion-actif"
+                        name="actif"
                         type="checkbox"
                         checked={formData.actif}
                         onChange={(e) => setFormData({ ...formData, actif: e.target.checked })}
