@@ -19,10 +19,10 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Extraire le chemin depuis le paramètre catch-all
-    // req.query.path contient un tableau des segments de chemin
-    const pathSegments = req.query.path || [];
-    const path = Array.isArray(pathSegments) ? pathSegments.join('/') : pathSegments;
+    // Extraire le chemin depuis req.query.path (fourni par le rewrite Vercel)
+    // Le rewrite /api/:path* -> /api/proxy transmet le chemin dans query
+    const pathParam = req.query.path;
+    const path = Array.isArray(pathParam) ? pathParam.join('/') : (pathParam || '');
     const targetUrl = `${RPI_API_URL}/${path}`;
 
     console.log(`[Proxy] ${req.method} /api/${path} -> ${targetUrl}`);
